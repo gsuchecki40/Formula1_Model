@@ -1,0 +1,6 @@
+streamlit>=1.12
+pandas>=1.3
+joblib>=1.0
+scikit-learn>=1.6.1
+# Needed by the serialized model
+xgboost>=1.7

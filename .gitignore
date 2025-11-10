@@ -1,0 +1,45 @@
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# macOS
+.DS_Store
+
+# Streamlit logs
+streamlit.log
+
+# IDEs
+.vscode/
+.idea/
+
+# Data artifacts (keep model file if you want; ignore large raw data)
+data/*.csv
+data/*.parquet
+# If you want to ignore the saved model remove the next line; currently we keep streamlit_model.joblib tracked
+# data/streamlit_model.joblib
+
+# Jupyter
+.ipynb_checkpoints/
+
+# pytest
+.pytest_cache/
+
+# Others
+*.egg-info/
+dist/
+build/
+
+# Coverage
+htmlcov/
+coverage.xml
+
+# OS generated
+*.swp
+*~
