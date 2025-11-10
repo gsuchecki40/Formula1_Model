@@ -411,14 +411,74 @@ def main():
     # Sidebar control to load drivers for the season automatically
     with st.sidebar.expander("Season drivers", expanded=False):
         st.write("Automatically load driver list for the selected season from Ergast API")
-        if st.button("Load drivers for season"):
-            fetched = fetch_drivers_for_season(int(season))
-            if fetched:
-                st.session_state["drivers"] = fetched[:n]
-                st.session_state["drivers_n"] = len(st.session_state["drivers"])
-                st.experimental_rerun()
-            else:
-                st.info("No drivers fetched; keep manual entry or try again")
+        # allow uploading a CSV of drivers as a manual fallback
+        uploaded = st.file_uploader("Or upload a drivers CSV (columns: Driver,TeamName,Grid,DriverNumber)", type=["csv"], key="drivers_csv")
+        if uploaded is not None:
+            try:
+                dfu = pd.read_csv(uploaded)
+                # normalize columns
+                cols = dfu.columns.str.strip()
+                dfu.columns = cols
+                required_cols = [c for c in ["Driver", "TeamName", "Grid", "DriverNumber"] if c in dfu.columns]
+                drivers_list = []
+                for _, row in dfu.iterrows():
+                    drivers_list.append({
+                        "Driver": str(row.get("Driver", "")),
+                        "TeamName": str(row.get("TeamName", "OTHER")),
+                        "Grid": int(row.get("Grid", 0)) if not pd.isna(row.get("Grid", None)) else 0,
+                        "DriverNumber": int(row.get("DriverNumber", 0)) if not pd.isna(row.get("DriverNumber", None)) else 0,
+                    })
+                if drivers_list:
+                    st.session_state["drivers"] = drivers_list[:n]
+                    st.session_state["drivers_n"] = len(st.session_state["drivers"])
+                    st.success(f"Loaded {len(drivers_list)} drivers from uploaded CSV")
+                    st.experimental_rerun()
+            except Exception as e:
+                st.error(f"Failed to parse uploaded CSV: {e}")
+
+        col1, col2 = st.columns([1,1])
+        with col1:
+            if st.button("Load drivers for season"):
+                fetched = fetch_drivers_for_season(int(season))
+                if fetched:
+                    st.session_state["drivers"] = fetched[:n]
+                    st.session_state["drivers_n"] = len(st.session_state["drivers"])
+                    st.experimental_rerun()
+                else:
+                    st.info("No drivers fetched; keep manual entry, upload a CSV, or try again")
+        with col2:
+            # load included sample CSV
+            if st.button("Load sample drivers (2025)"):
+                sample_path = os.path.join("data", "sample_drivers_2025.csv")
+                if os.path.exists(sample_path):
+                    try:
+                        dfu = pd.read_csv(sample_path)
+                        drivers_list = []
+                        for _, row in dfu.iterrows():
+                            drivers_list.append({
+                                "Driver": str(row.get("Driver", "")),
+                                "TeamName": str(row.get("TeamName", "OTHER")),
+                                "Grid": int(row.get("Grid", 0)) if not pd.isna(row.get("Grid", None)) else 0,
+                                "DriverNumber": int(row.get("DriverNumber", 0)) if not pd.isna(row.get("DriverNumber", None)) else 0,
+                            })
+                        if drivers_list:
+                            st.session_state["drivers"] = drivers_list[:n]
+                            st.session_state["drivers_n"] = len(st.session_state["drivers"])
+                            st.experimental_rerun()
+                    except Exception as e:
+                        st.error(f"Failed to load sample drivers: {e}")
+
+        # cache control
+        if st.button("Clear cached drivers for season"):
+            cache_path = os.path.join("data", f"drivers_{int(season)}.json")
+            try:
+                if os.path.exists(cache_path):
+                    os.remove(cache_path)
+                    st.success(f"Cleared cache: {cache_path}")
+                else:
+                    st.info("No cached file to remove")
+            except Exception as e:
+                st.error(f"Failed to clear cache: {e}")
 
     st.markdown("Edit driver details below. Use the Add / Remove buttons to modify the list.")
 
