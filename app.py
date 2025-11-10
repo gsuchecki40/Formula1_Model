@@ -3,6 +3,9 @@ import joblib
 import pandas as pd
 import streamlit as st
 import numpy as np
+import json
+import urllib.request
+from urllib.error import URLError, HTTPError
 
 
 try:
@@ -341,13 +344,81 @@ def main():
     # Extract categorical options (TeamName, Driver, etc.) from preprocessor if present
     cat_options = extract_categorical_options(preprocessor)
 
+    # Helper: load current drivers for a season from Ergast API
+    def fetch_drivers_for_season(year: int):
+        cache_path = os.path.join("data", f"drivers_{year}.json")
+        # return cached if present
+        try:
+            if os.path.exists(cache_path):
+                with open(cache_path, "r") as fh:
+                    return json.load(fh)
+        except Exception:
+            pass
+
+        url = f"http://ergast.com/api/f1/{year}/drivers.json?limit=1000"
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "python-urllib/3"})
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.load(resp)
+            drivers = data.get("MRData", {}).get("DriverTable", {}).get("Drivers", [])
+            out = []
+            for i, d in enumerate(drivers):
+                drv_id = d.get('driverId')
+                name = f"{d.get('givenName','').strip()} {d.get('familyName','').strip()}".strip()
+                num = d.get('permanentNumber') or 0
+                team = "OTHER"
+                # try to fetch the constructor for this driver in the given season
+                try:
+                    if drv_id:
+                        c_url = f"http://ergast.com/api/f1/{year}/drivers/{drv_id}/constructors.json"
+                        creq = urllib.request.Request(c_url, headers={"User-Agent": "python-urllib/3"})
+                        with urllib.request.urlopen(creq, timeout=8) as cresp:
+                            cdata = json.load(cresp)
+                        constructors = cdata.get('MRData', {}).get('ConstructorTable', {}).get('Constructors', [])
+                        if constructors:
+                            team = constructors[0].get('name', 'OTHER')
+                except Exception:
+                    # ignore and leave team as OTHER
+                    team = team
+
+                out.append({"Driver": name or f"Driver {i+1}", "TeamName": team, "Grid": i + 1, "DriverNumber": int(num) if str(num).isdigit() else 0})
+
+            # cache result
+            try:
+                os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+                with open(cache_path, "w") as fh:
+                    json.dump(out, fh)
+            except Exception:
+                pass
+
+            return out
+        except (URLError, HTTPError) as e:
+            st.warning(f"Failed to fetch drivers from Ergast: {e}")
+            return []
+        except Exception as e:
+            st.warning(f"Unexpected error fetching drivers: {e}")
+            return []
+
+
     # Initialize drivers in session_state if needed or if n changed
     if "drivers" not in st.session_state or st.session_state.get("drivers_n") != n:
         default_team = cat_options.get("TeamName", ["OTHER"])[0] if cat_options.get("TeamName") else "OTHER"
         st.session_state["drivers"] = [
-            {"Driver": f"Driver {i+1}", "TeamName": default_team, "Grid": i + 1} for i in range(n)
+            {"Driver": f"Driver {i+1}", "TeamName": default_team, "Grid": i + 1, "DriverNumber": 0} for i in range(n)
         ]
         st.session_state["drivers_n"] = n
+
+    # Sidebar control to load drivers for the season automatically
+    with st.sidebar.expander("Season drivers", expanded=False):
+        st.write("Automatically load driver list for the selected season from Ergast API")
+        if st.button("Load drivers for season"):
+            fetched = fetch_drivers_for_season(int(season))
+            if fetched:
+                st.session_state["drivers"] = fetched[:n]
+                st.session_state["drivers_n"] = len(st.session_state["drivers"])
+                st.experimental_rerun()
+            else:
+                st.info("No drivers fetched; keep manual entry or try again")
 
     st.markdown("Edit driver details below. Use the Add / Remove buttons to modify the list.")
 
